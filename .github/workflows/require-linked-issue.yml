@@ -1,0 +1,37 @@
+name: Require linked issue
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR has a linked issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $pr: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $pr) {
+                  closingIssuesReferences(first: 1) { totalCount }
+                }
+              }
+            }' \
+            -F owner='${{ github.repository_owner }}' \
+            -F repo='${{ github.event.repository.name }}' \
+            -F pr='${{ github.event.number }}' \
+            -q '.data.repository.pullRequest.closingIssuesReferences.totalCount')
+
+          if [ "$count" -eq 0 ]; then
+            echo "::error::This PR has no linked issue. Add a closing keyword to the PR description (e.g. 'Fixes #12'), or link one via the Development section in the sidebar. A bare '#12' mention does not count."
+            exit 1
+          fi
+
+          echo "Linked issues: $count"
